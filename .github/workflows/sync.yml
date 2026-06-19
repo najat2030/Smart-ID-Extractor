@@ -12,4 +12,4 @@ jobs:
       - name: Push to HF
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: git push --force https://Najat2026:$HF_TOKEN@huggingface.co/spaces/Najat2026/Smart-ID-Extractor main
+        run: git push --force https://x:$HF_TOKEN@huggingface.co/spaces/snow-white221/Smart-ID-Extractor main
