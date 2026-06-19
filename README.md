@@ -1,2 +1,9 @@
-# Smart-ID-Extractor
-أداة ذكية لاستخراج بيانات البطاقات الشخصية باستخدام ذكاء Gemini الاصطناعي  . تدعم معالجة الصور وملفات PDF المجمعة وتصدير البيانات فوراً في ملف إكسيل منظم.
+---
+title: Smart ID Extractor
+emoji: 🆔
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_file: app.py
+pinned: false
+---
