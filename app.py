@@ -1,5 +1,5 @@
 import os
-import streamlit as dt
+import streamlit as st
 import google.generativeai as genai
 import pandas as pd
 
@@ -18,7 +18,7 @@ else:
     genai.configure(api_key=api_key)
 
     # 3. صندوق رفع ملف الـ PDF
-    uploaded_file = st.file_uploader("للمطاقات ارفعي ملف PDF", type=["pdf"])
+    uploaded_file = st.file_uploader("للبطاقات ارفعي ملف PDF", type=["pdf"])
 
     if uploaded_file is not None:
         st.info("🔄 جاري رفع الملف ومعالجته بواسطة Gemini الذكاء الاصطناعي... انتظري قليلاً.")
@@ -51,9 +51,6 @@ else:
             # عرض النتيجة المبدئية على الشاشة
             st.success("✨ تم استخراج البيانات بنجاح!")
             st.write(response.text)
-            
-            # هنا يمكنك تحويل النص المستخرج إلى DataFrame وتجهيز زر تحميل الإكسيل
-            # (الكود مهيأ لقراءة الجدول وتحويله تلقائياً)
             
         except Exception as e:
             st.error(f"❌ حدث خطأ أثناء المعالجة: {str(e)}")
