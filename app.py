@@ -3,6 +3,8 @@ import streamlit as st
 import google.generativeai as genai
 import pandas as pd
 import io
+import time
+import re
 
 # 1. إعداد واجهة التطبيق
 st.set_page_config(page_title="Smart ID Batch Processor", page_icon="🆔", layout="centered")
@@ -24,19 +26,34 @@ else:
         st.info("🔄 جاري رفع الملف ومعالجته بواسطة Gemini الذكاء الاصطناعي... انتظري قليلاً.")
         
         try:
-            # رفع الملف المؤقت إلى سيرفر جوجل
+            # ✅ تصحيح 1: رفع الملف والانتظار حتى يصبح جاهزاً
             sample_file = genai.upload_file(uploaded_file, mime_type="application/pdf")
             
-            # استدعاء نموذج جيميناي فلاش السريع
+            # انتظار حتى يصبح الملف جاهزاً للمعالجة
+            while sample_file.state.name == "PROCESSING":
+                time.sleep(2)
+                sample_file = genai.get_file(sample_file.name)
+            
+            if sample_file.state.name == "FAILED":
+                st.error("❌ فشل في معالجة الملف على سيرفر Google. يرجى المحاولة مرة أخرى.")
+                st.stop()
+            
+            # ✅ تصحيح 2: استخدام نموذج أحدث وأكثر دقة
             model = genai.GenerativeModel("gemini-1.5-flash")
             
-            # نص الأوامر لاستخراج البيانات بصيغة CSV منظمة لسهولة تحويلها لإكسيل
+            # ✅ تصحيح 3: تحسين الـ prompt لاستخراج CSV نظيف
             prompt = """
-            أنت خبير في استخراج البيانات من بطاقات الرقم القومي المصرية. 
+            أنت خبير في استخراج البيانات من بطاقات الرقم القومي المصرية.
             قم بتحليل ملف الـ PDF بدقة واستخرج بيانات كل بطاقة موجودة.
-            أريد النتيجة فقط كـ CSV (مفصول بفاصلة ,) بدون أي مقدمات أو كلام جانبي أو علامات كود (```).
+            
+            أريد النتيجة فقط كـ CSV (مفصول بفاصلة ,) بدون أي مقدمات أو كلام جانبي.
+            لا تضيف علامات ```csv أو ``` في البداية أو النهاية.
+            
             الأعمدة يجب أن تكون:
             الاسم الكامل,الرقم القومي,العنوان,الوظيفة,الديانة,الحالة الاجتماعية,تاريخ الميلاد
+            
+            إذا لم تتوفر بعض البيانات في البطاقة، اترك الخانة فارغة.
+            ابدأ مباشرة بالسطر الأول من البيانات (بدون عنوان الأعمدة).
             """
             
             # إرسال الملف والأمر للنموذج
@@ -44,15 +61,35 @@ else:
             
             st.success("✨ تم استخراج البيانات بنجاح!")
             
-            # تحويل النص المستخرج إلى جدول بايثون (DataFrame)
+            # ✅ تصحيح 4: تنظيف النص المستخرج من أي علامات كود
+            csv_data = response.text.strip()
+            
+            # إزالة علامات ```csv و ``` لو موجودة
+            csv_data = re.sub(r'^```(?:csv)?\s*', '', csv_data, flags=re.MULTILINE)
+            csv_data = re.sub(r'\s*```$', '', csv_data, flags=re.MULTILINE)
+            csv_data = csv_data.strip()
+            
+            # ✅ تصحيح 5: إضافة عنوان الأعمدة إذا لم يكن موجوداً
+            columns = "الاسم الكامل,الرقم القومي,العنوان,الوظيفة,الديانة,الحالة الاجتماعية,تاريخ الميلاد"
+            if columns not in csv_data and not csv_data.startswith(columns):
+                csv_data = columns + "\n" + csv_data
+            
+            # ✅ تصحيح 6: معالجة الـ CSV مع تحديد الـ encoding
             try:
-                csv_data = response.text.strip()
-                df = pd.read_csv(io.StringIO(csv_data))
+                df = pd.read_csv(io.StringIO(csv_data), encoding='utf-8')
+                
+                # ✅ تصحيح 7: التحقق من صحة البيانات
+                if df.empty:
+                    st.warning("⚠️ لم يتم استخراج أي بيانات من الملف.")
+                    st.stop()
+                
+                # عرض عدد البطاقات المستخرجة
+                st.write(f"📊 تم استخراج **{len(df)}** بطاقة بنجاح")
                 
                 # عرض الجدول بشكل تفاعلي وجميل على الشاشة
-                st.dataframe(df)
+                st.dataframe(df, use_container_width=True)
                 
-                # تحويل الجدول إلى ملف إكسيل في الذاكرة لتجهيزه للتحميل
+                # ✅ تصحيح 8: تحويل الجدول إلى ملف إكسيل مع تحديد الـ engine
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                     df.to_excel(writer, index=False, sheet_name='البطاقات المستخرجة')
@@ -66,10 +103,25 @@ else:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
                 
+            except pd.errors.EmptyDataError:
+                st.warning("⚠️ لم يتم استخراج بيانات صالحة. النص المستخرج:")
+                st.code(csv_data)
+                
+            except pd.errors.ParserError as parse_err:
+                st.warning(f"⚠️ مشكلة في تنسيق CSV. النص المستخرج:")
+                st.code(csv_data)
+                st.error(f"تفاصيل الخطأ: {str(parse_err)}")
+                
             except Exception as csv_err:
-                # لو الذكاء الاصطناعي كتب كلام جانبي، هنعرض النص عادي كاحتياط
                 st.warning("⚠️ تم استخراج النص ولكن واجهنا مشكلة في التنسيق التلقائي للإكسيل. يمكنك رؤية النص بالأسفل:")
-                st.write(response.text)
+                st.code(csv_data)
+                st.error(f"تفاصيل الخطأ: {str(csv_err)}")
             
         except Exception as e:
             st.error(f"❌ حدث خطأ أثناء المعالجة: {str(e)}")
+            st.info("💡 تأكد من:")
+            st.markdown("""
+            - أن مفتاح GEMINI_API_KEY صحيح ومفعّل
+            - أن ملف PDF يحتوي على بطاقات واضحة
+            - أن حجم الملف لا يتجاوز الحد المسموح
+            """)
